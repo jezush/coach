@@ -13,7 +13,7 @@ FROM base AS builder
 ARG COMMIT_SHA
 ENV COMMIT_SHA=${COMMIT_SHA}
 ENV CHAT_TURN_RUNNER_ENABLED=false
-ENV NODE_OPTIONS=--max-old-space-size=12288
+ENV NODE_OPTIONS=--max-old-space-size=14336
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Skip typecheck: upstream Docker fails on missing zod-to-json-schema; release already CI-checked
