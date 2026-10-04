@@ -1,0 +1,36 @@
+FROM node:24-slim AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+RUN apt-get update -y && apt-get install -y python3 make g++ openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+FROM base AS deps
+COPY package.json pnpm-lock.yaml ./
+COPY prisma ./prisma/
+COPY prisma.config.ts ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+FROM base AS builder
+ARG COMMIT_SHA
+ENV COMMIT_SHA=${COMMIT_SHA}
+ENV CHAT_TURN_RUNNER_ENABLED=false
+ENV NODE_OPTIONS=--max-old-space-size=12288
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+# Skip typecheck: upstream Docker fails on missing zod-to-json-schema; release already CI-checked
+RUN pnpm build
+FROM base AS runner
+ENV NODE_ENV=production
+COPY --from=builder /app/.output ./.output
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/app/emails ./app/emails
+COPY --from=builder /app/app/utils ./app/utils
+COPY --from=builder /app/cli ./cli
+COPY --from=builder /app/server ./server
+COPY --from=builder /app/trigger ./trigger
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/start.sh ./start.sh
+RUN chmod +x ./start.sh
+EXPOSE 3000
+CMD ["./start.sh"]
